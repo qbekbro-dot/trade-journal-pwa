@@ -1,19 +1,47 @@
 const CACHE_NAME = 'tj-cache-v1';
-const URLsToCache = ['/', '/index.html', '/manifest.json', '/sw.js', '/icons/icon-192.png', '/icons/icon-512.png'];
+const URLsToCache = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/sw.js',
+  '/icons/icon-192.png',
+  '/icons/icon-512.png'
+];
 
-self.addEventListener('install', event => {
+// Install
+self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(URLsToCache))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(URLsToCache);
+    })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('fetch', event => {
-  event.respondWith(
-    caches.match(event.request).then(resp => resp || fetch(event.request))
+// Activate
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cache) => {
+          if (cache !== CACHE_NAME) {
+            return caches.delete(cache);
+          }
+        })
+      );
+    })
   );
+  self.clients.claim();
 });
 
-self.addEventListener('activate', event => {
-  event.waitUntil(self.clients.claim());
+// Fetch
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request).then((cachedResponse) => {
+      return (
+        cachedResponse ||
+        fetch(event.request).catch(() => cachedResponse)
+      );
+    })
+  );
 });
