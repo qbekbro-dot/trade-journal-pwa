@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Trade Journal — PWA</title>
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<style>
+  :root{--bg:#061025;--card:#0f1724;--accent:#7c3aed;--muted:#9aa4b2}
+  body{font-family:system-ui,Segoe UI,Roboto,Arial;background:var(--bg);color:#e6eef6;margin:0;padding:12px}
+  .container{max-width:900px;margin:0 auto}
+  .card{background:var(--card);padding:12px;border-radius:10px}
+  .btn{background:var(--accent);color:#fff;padding:8px 12px;border-radius:8px;border:0}
+  .summary{white-space:pre-wrap;background:#071822;padding:12px;border-radius:8px;min-height:160px}
+  img.icon{border-radius:12px;border:1px solid rgba(255,255,255,0.04)}
+  label{display:block;margin:.4rem 0}
+  input, select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid rgba(255,255,255,.06);background:#0b1117;color:inherit;box-sizing:border-box}
+  .row{display:flex;gap:8px}
+  .col{flex:1}
+  .checkbox-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Trade Journal — PWA</h1>
+
+  <div class="card" id="entryCard">
+    <label>Instrument</label>
+    <select id="instrument"><option value="NQ">NQ</option><option value="GC">GC</option></select>
+
+    <div class="row" style="margin-top:8px">
+      <div class="col"><label>Typ pozycji</label><select id="side"><option>Long</option><option>Short</option></select></div>
+      <div class="col">
+        <label>Wynik</label>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <label style="margin:0"><input type="radio" name="result" value="Win" checked/> Win</label>
+          <label style="margin:0"><input type="radio" name="result" value="Lose" /> Lose</label>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="card" id="groups" >
+      <div style="margin-bottom:8px"><strong>SESJA</strong></div>
+      <div class="checkbox-grid" id="checks_session">
+        <label><input type="checkbox" value="poc_session" /> POC sesji</label>
+        <label><input type="checkbox" value="val_session" /> VAL sesji</label>
+        <label><input type="checkbox" value="vah_session" /> VAH sesji</label>
+        <label><input type="checkbox" value="vwap_up_session" /> VWAP up (sesja)</label>
+        <label><input type="checkbox" value="vwap_down_session" /> VWAP down (sesja)</label>
+        <label><input type="checkbox" value="lvn_session" /> LVN sesji</label>
+        <label><input type="checkbox" value="hvn_session" /> HVN sesji</label>
+      </div>
+      <div style="margin-top:12px"><strong>SWING / RANGE</strong></div>
+      <div class="checkbox-grid" id="checks_range">
+        <label><input type="checkbox" value="poc_swing" /> POC swingu</label>
+        <label><input type="checkbox" value="val_swing" /> VAL swingu</label>
+        <label><input type="checkbox" value="vah_swing" /> VAH swingu</label>
+        <label><input type="checkbox" value="vwap_up_range" /> VWAP up (range)</label>
+        <label><input type="checkbox" value="vwap_down_range" /> VWAP down (range)</label>
+        <label><input type="checkbox" value="lvn_swing" /> LVN swingu</label>
+        <label><input type="checkbox" value="hvn_swing" /> HVN swingu</label>
+      </div>
+
+      <div style="margin-top:12px"><strong>INNE</strong></div>
+      <div class="checkbox-grid" id="checks_other">
+        <label><input type="checkbox" value="fvg" /> FVG / imbalance</label>
+        <label><input type="checkbox" value="cvd_div" /> CVD divergence</label>
+        <label><input type="checkbox" value="footprint_abs" /> Footprint absorption</label>
+        <label><input type="checkbox" value="extra_note" /> Inny ważny sygnał</label>
+      </div>
+    </div>
+
+    <div style="margin-top:12px" class="row">
+      <div class="col"><label>Entry price (opcjonalne)</label><input id="entryPrice" type="number" step="0.1" placeholder="np. 4050"/></div>
+      <div class="col"><label>Exit price (opcjonalne)</label><input id="exitPrice" type="number" step="0.1" placeholder="np. 4075"/></div>
+    </div>
+
+    <label style="margin-top:8px">Notatki (opcjonalne)</label>
+    <textarea id="notes" rows="3" placeholder="Krótka notka, link do screena..."></textarea>
+
+    <div style="margin-top:12px" class="row">
+      <button class="btn" id="genBtn">GENERUJ</button>
+      <button class="btn" id="clearBtn" style="background:#444">Usuń wszystkie</button>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:12px">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong>Wygenerowany raport</strong>
+      <div style="display:flex;gap:8px">
+        <button class="btn" id="copyBtn">Kopiuj</button>
+      </div>
+    </div>
+    <div id="summary" class="summary"></div>
+  </div>
+
+</div>
+
+<script>
+// --- local app logic (same as before) ---
+const $ = id => document.getElementById(id);
+function uid(){return Date.now().toString(36)+Math.random().toString(36).slice(2,7)}
+function nowISO(){return new Date().toISOString()}
+function load(){try{return JSON.parse(localStorage.getItem('tj_entries')||'[]')}catch(e){return []}}
+function saveAll(arr){localStorage.setItem('tj_entries',JSON.stringify(arr))}
+
+function readChecks(){
+  const sel=[];
+  ['checks_session','checks_range','checks_other'].forEach(gid=>{
+    const c=Array.from(document.querySelectorAll('#'+gid+' input[type=checkbox]'));
+    c.filter(x=>x.checked).forEach(x=>sel.push(x.value));
+  });
+  return sel;
+}
+function getResult(){const r=document.querySelector('input[name="result"]:checked'); return r? r.value:'Win'}
+function prettifyCheck(code){
+  const map = {
+    'poc_session':'POC sesji','val_session':'VAL sesji','vah_session':'VAH sesji',
+    'vwap_up_session':'VWAP up (sesja)','vwap_down_session':'VWAP down (sesja)',
+    'lvn_session':'LVN sesji','hvn_session':'HVN sesji',
+    'poc_swing':'POC swingu','val_swing':'VAL swingu','vah_swing':'VAH swingu',
+    'vwap_up_range':'VWAP up (range)','vwap_down_range':'VWAP down (range)',
+    'lvn_swing':'LVN swingu','hvn_swing':'HVN swingu',
+    'fvg':'FVG / imbalance','cvd_div':'CVD divergence','footprint_abs':'Footprint absorption',
+    'extra_note':'Inny ważny sygnał'
+  };
+  return map[code]||code;
+}
+function buildOrderedReport(entry){
+  const lines=[];
+  lines.push('INSTRUMENT: ' + entry.instrument);
+  lines.push('STATUS: ' + entry.result);
+  lines.push('');
+  const sideLabel = entry.side && entry.side.toUpperCase()==='LONG' ? 'WEJŚCIE LONG:' : 'WEJŚCIE SHORT:';
+  lines.push(sideLabel);
+  const present = new Set(entry.checks || []);
+  const sessionOrder = ['poc_session','lvn_session','hvn_session','val_session','vah_session','vwap_up_session','vwap_down_session'];
+  const swingOrder = ['poc_swing','lvn_swing','hvn_swing','val_swing','vah_swing','vwap_up_range','vwap_down_range'];
+  const otherOrder = ['fvg','cvd_div','footprint_abs','extra_note'];
+  const sessionItems = sessionOrder.filter(k=>present.has(k)).map(prettifyCheck);
+  const swingItems = swingOrder.filter(k=>present.has(k)).map(prettifyCheck);
+  const otherItems = otherOrder.filter(k=>present.has(k)).map(prettifyCheck);
+  if(sessionItems.length){ lines.push('SESJA:'); sessionItems.forEach(s=>lines.push('- '+s)); }
+  if(swingItems.length){ if(!sessionItems.length) lines.push('(brak sygnałów sesji)'); lines.push('SWING / RANGE:'); swingItems.forEach(s=>lines.push('- '+s)); }
+  if(otherItems.length){ if(!sessionItems.length && !swingItems.length) lines.push('(brak sygnałów session/swing)'); lines.push('INNE:'); otherItems.forEach(s=>lines.push('- '+s)); }
+  if(!sessionItems.length && !swingItems.length && !otherItems.length){ lines.push('- brak zaznaczonych sygnałów'); }
+  const ep = entry.entryPrice!==null && entry.entryPrice!=='' ? entry.entryPrice : '';
+  const xp = entry.exitPrice!==null && entry.exitPrice!=='' ? entry.exitPrice : '';
+  if(ep||xp){ lines.push(''); let ee=''; if(ep) ee+='ENTRY: '+ep; if(xp) ee+=(ee? '   ':'')+'EXIT: '+xp; lines.push(ee); }
+  if(entry.notes && entry.notes.trim()!==''){ lines.push(''); lines.push('NOTATKI: '+entry.notes.trim()); }
+  lines.push('----');
+  return lines.join('\n');
+}
+
+$('genBtn').addEventListener('click', ()=>{
+  const inst = $('instrument').value;
+  if(!inst){ alert('Wybierz instrument'); return }
+  const entry = { id: uid(), time: nowISO(), instrument: inst, side: $('side').value, result: getResult(), checks: readChecks(), entryPrice: $('entryPrice').value||null, exitPrice: $('exitPrice').value||null, notes: $('notes').value||'' };
+  const arr = load(); arr.unshift(entry); saveAll(arr);
+  $('summary').textContent = buildOrderedReport(entry);
+  // clear minimal
+  $('entryPrice').value=''; $('exitPrice').value=''; $('notes').value=''; ['checks_session','checks_range','checks_other'].forEach(gid=>Array.from(document.querySelectorAll('#'+gid+' input')).forEach(i=>i.checked=false));
+});
+
+$('copyBtn').addEventListener('click', async ()=>{
+  try{ await navigator.clipboard.writeText($('summary').textContent); alert('Skopiowano'); }catch(e){ alert('Kopiowanie nie powiodło się'); }
+});
+$('clearBtn').addEventListener('click', ()=>{ if(confirm('Usuń wszystkie wpisy?')){ localStorage.removeItem('tj_entries'); $('summary').textContent=''; alert('Usunięto'); } });
+
+// register service worker if available
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').then(()=>console.log('sw ok')).catch(()=>console.warn('sw failed'));
+}
+</script>
+</body>
+</html>
